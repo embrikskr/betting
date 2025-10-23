@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bet Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="lib/supabase.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap" style="display:flex;align-items:center;gap:16px">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Road to 1 million</h1>
+          <p class="muted"> ... </p>
+        </div>
+      </div>
+      <div style="margin-left:auto">
+        <a class="btn" href="login.html">Logg inn</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="cards">
+      <div class="card">
+        <h2>Resultat</h2>
+        <div id="mProfit" class="metric">+0,00</div>
+        <p class="muted">Sum gevinst/tap</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Dato</th>
+              <th>Side</th>
+              <th>Event</th>
+              <th>Valg</th>
+              <th>Innsats</th>
+              <th>Odds</th>
+              <th>Status</th>
+              <th>Utbetaling</th>
+              <th>Profit</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p class="muted">.</p>
+    </div>
+  </footer>
+
+  <script>
+    const fmt=new Intl.NumberFormat('no-NO',{minimumFractionDigits:2,maximumFractionDigits:2});
+    function statusPill(status){const cls=status==='win'?'win':status==='loss'?'loss':'pending'; const txt=status==='win'?'Vunnet':status==='loss'?'Tapt':'Åpen'; return `<span class="pill ${cls}">${txt}</span>`;}
+    async function loadBets(){ const { data, error } = await sb.from('bets').select('*').order('date',{ascending:false}).order('created_at',{ascending:false}); if(error){console.error(error); return []} return data||[]; }
+    function computeProfit(bets){const settled=bets.filter(b=>b.status!=='pending'); return settled.reduce((s,b)=> s + (b.status==='win'? Number(b.stake)*(Number(b.odds)-1) : -Number(b.stake)), 0);}
+    function renderTable(bets){
+      const tbody=document.getElementById('rows'); tbody.innerHTML='';
+      bets.forEach(b=>{ const payout=b.status==='win'? Number(b.stake)*Number(b.odds): (b.status==='loss'?0:0); const profit=b.status==='win'? Number(b.stake)*(Number(b.odds)-1): (b.status==='loss'?-Number(b.stake):0);
+        const tr=document.createElement('tr'); tr.innerHTML=`
+          <td>${b.date}</td>
+          <td>${b.bookie}</td>
+          <td>${b.event}</td>
+          <td>${b.pick}</td>
+          <td>${fmt.format(Number(b.stake))}</td>
+          <td>${Number(b.odds).toFixed(2)}</td>
+          <td>${statusPill(b.status)}</td>
+          <td>${b.status==='pending'?'—':fmt.format(payout)}</td>
+          <td>${b.status==='pending'?'—':((profit>=0?'+':'')+fmt.format(profit))}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    (async()=>{ const bets=await loadBets(); renderTable(bets); const profit=computeProfit(bets); const mp=document.getElementById('mProfit'); mp.textContent=(profit>=0?'+':'')+fmt.format(profit); mp.classList.toggle('good',profit>0); mp.classList.toggle('bad',profit<0); })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+window.APP_CONFIG = {
+  SUPABASE_URL: "https://wwisemuzpthgldymagjj.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3aXNlbXV6cHRoZ2xkeW1hZ2pqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyMjAxODgsImV4cCI6MjA3Njc5NjE4OH0.HAcFPoxlh4Lfvu-e5AQ5AY09PZ192kf1ePxLVLpuCEs",
+  ADMIN_UIDS: ["d8733af0-b889-498b-9c76-6b5d602df5f8", "ded5aa78-4651-4841-a717-eaaf880672a1"]
+};

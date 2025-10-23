@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hent min UID – Bet Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="lib/supabase.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <section class="panel">
+      <h2>Logg inn</h2>
+      <div class="form-grid two">
+        <div class="field"><label for="email">E-post</label><input id="email" type="email" placeholder="admin@example.com"></div>
+        <div class="field"><label for="password">Passord</label><input id="password" type="password" placeholder="passord"></div>
+      </div>
+      <div class="right"><button id="loginBtn" class="btn">Logg inn</button></div>
+      <pre id="out" class="panel" style="white-space:pre-wrap; background:#0e1117; margin-top:12px"></pre>
+    </section>
+  </main>
+  <script>
+    document.getElementById('loginBtn').addEventListener('click', async ()=>{
+      const email=document.getElementById('email').value.trim();
+      const password=document.getElementById('password').value;
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      const out = document.getElementById('out');
+      if(error){ out.textContent = 'Error: '+error.message; return; }
+      out.textContent = 'Du er innlogget. Din UID (kopier denne):\n' + (data?.user?.id || data?.session?.user?.id || 'ukjent');
+    });
+  </script>
+</body>
+</html>

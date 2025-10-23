@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin – Bet Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="lib/supabase.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap" style="display:flex;align-items:center;gap:16px">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Adminpanel</h1>
+          <p class="muted">Legg inn og oppdater spill</p>
+        </div>
+      </div>
+      <div style="margin-left:auto">
+        <a class="btn ghost" href="index.html">← Til oversikten</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="loginBox" class="panel">
+      <h2>Logg inn</h2>
+      <div class="form-grid two">
+        <div class="field">
+          <label for="email">E-post</label>
+          <input id="email" type="email" placeholder="admin@example.com" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="password">Passord</label>
+          <input id="password" type="password" placeholder="passord" autocomplete="current-password">
+        </div>
+      </div>
+      <div class="right">
+        <button id="loginBtn" class="btn">Logg inn</button>
+      </div>
+      <p id="loginError" class="muted" style="color:#fca5a5"></p>
+    </section>
+
+    <section id="adminPanel" class="panel hidden">
+      <h2>Legg inn nytt spill</h2>
+      <form id="betForm" class="form-grid">
+        <div class="field">
+          <label for="date">Dato</label>
+          <input type="date" id="date" required>
+        </div>
+        <div class="field">
+          <label for="bookie">Side</label>
+          <input type="text" id="bookie" placeholder="Parions / Bet365" required>
+        </div>
+        <div class="field">
+          <label for="event">Event</label>
+          <input type="text" id="event" placeholder="Nottingham – Chelsea" required>
+        </div>
+        <div class="field">
+          <label for="pick">Valg</label>
+          <input type="text" id="pick" placeholder="Chelsea ML" required>
+        </div>
+        <div class="field">
+          <label for="stake">Innsats</label>
+          <input type="number" id="stake" min="0" step="0.01" placeholder="100" required>
+        </div>
+        <div class="field">
+          <label for="odds">Odds</label>
+          <input type="number" id="odds" min="1" step="0.01" placeholder="1.85" required>
+        </div>
+        <div class="right full">
+          <button type="reset" class="btn ghost">Nullstill</button>
+          <button type="submit" class="btn">Legg til</button>
+        </div>
+      </form>
+
+      <h2 class="mt-2">Dine spill</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Dato</th><th>Bookie</th><th>Event</th><th>Valg</th>
+              <th>Innsats</th><th>Odds</th><th>Status</th><th>Profit</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="adminRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <button id="logoutBtn" class="btn ghost hidden">Logg ut</button>
+    </div>
+  </footer>
+
+  <script>
+    const fmt=new Intl.NumberFormat('no-NO',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const ADMIN_UIDS = window.APP_CONFIG.ADMIN_UIDS || [];
+    function profitFor(b){ return b.status==='win' ? Number(b.stake)*(Number(b.odds)-1) : (b.status==='loss' ? -Number(b.stake) : 0); }
+    function isAdminSession(session){ const uid = session?.user?.id; return !!uid && ADMIN_UIDS.includes(uid); }
+
+    async function renderAdmin(){
+      const { data, error } = await sb.from('bets').select('*').order('date',{ascending:false}).order('created_at',{ascending:false});
+      if(error){ alert('Kunne ikke laste: '+error.message); return; }
+      const tbody=document.getElementById('adminRows'); tbody.innerHTML='';
+      (data||[]).forEach(b=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
+          <td>${b.date||''}</td>
+          <td>${b.bookie||''}</td>
+          <td>${b.event||''}</td>
+          <td>${b.pick||''}</td>
+          <td>${fmt.format(Number(b.stake))}</td>
+          <td>${Number(b.odds).toFixed(2)}</td>
+          <td>
+            <select data-id="${b.id}">
+              <option value="pending" ${b.status==='pending'?'selected':''}>Åpen</option>
+              <option value="win" ${b.status==='win'?'selected':''}>Vunnet</option>
+              <option value="loss" ${b.status==='loss'?'selected':''}>Tapt</option>
+            </select>
+          </td>
+          <td>${b.status==='pending'?'—':((profitFor(b)>=0?'+':'')+fmt.format(profitFor(b)))}</td>
+          <td class="right">
+            <button class="btn ghost" data-del="${b.id}">Slett</button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+
+      tbody.querySelectorAll('select[data-id]').forEach(sel=>{
+        sel.addEventListener('change', async e=>{
+          const id=e.target.getAttribute('data-id');
+          const status=e.target.value;
+          const { error } = await sb.from('bets').update({ status }).eq('id', id);
+          if(error){ alert('Kunne ikke oppdatere: '+error.message); return; }
+          renderAdmin();
+        });
+      });
+      tbody.querySelectorAll('button[data-del]').forEach(btn=>{
+        btn.addEventListener('click', async e=>{
+          const id=e.target.getAttribute('data-del');
+          if(!confirm('Slette dette spillet?')) return;
+          const { error } = await sb.from('bets').delete().eq('id', id);
+          if(error){ alert('Kunne ikke slette: '+error.message); return; }
+          renderAdmin();
+        });
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      document.getElementById('loginBtn').addEventListener('click', async ()=>{
+        const email=document.getElementById('email').value.trim();
+        const password=document.getElementById('password').value;
+        const err=document.getElementById('loginError'); err.textContent='';
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        if(error){ err.textContent=error.message; return; }
+        if(!isAdminSession(data.session)){ err.textContent='Ikke autorisert (feil bruker).'; await sb.auth.signOut(); return; }
+        document.getElementById('loginBox').classList.add('hidden');
+        document.getElementById('adminPanel').classList.remove('hidden');
+        renderAdmin();
+        document.getElementById('logoutBtn')?.classList.remove('hidden');
+      });
+
+      document.getElementById('logoutBtn')?.addEventListener('click', async ()=>{ await sb.auth.signOut(); location.reload(); });
+
+      document.getElementById('betForm').addEventListener('submit', async e=>{
+        e.preventDefault();
+        const date=document.getElementById('date').value || new Date().toISOString().slice(0,10);
+        const bookie=document.getElementById('bookie').value.trim();
+        const event=document.getElementById('event').value.trim();
+        const pick=document.getElementById('pick').value.trim();
+        const stake=parseFloat(document.getElementById('stake').value);
+        const odds=parseFloat(document.getElementById('odds').value);
+        if(!bookie||!event||!pick||!isFinite(stake)||!isFinite(odds)) return;
+        const { error } = await sb.from('bets').insert([{ date, bookie, event, pick, stake, odds, status:'pending' }]);
+        if(error){ alert('Kunne ikke legge til: '+error.message); return; }
+        e.target.reset();
+        renderAdmin();
+      });
+    });
+  </script>
+</body>
+</html>
