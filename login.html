@@ -16,7 +16,7 @@
         <div class="logo"></div>
         <div>
           <h1>Adminpanel</h1>
-          <p class="muted">Legg inn og oppdater spill</p>
+          <p class="muted">Legg inn single og combo-kuponger</p>
         </div>
       </div>
       <div style="margin-left:auto">
@@ -35,7 +35,7 @@
         </div>
         <div class="field">
           <label for="password">Passord</label>
-          <input id="password" type="password" placeholder="passord" autocomplete="current-password">
+          <input id="password" type="password" placeholder="123456" autocomplete="current-password">
         </div>
       </div>
       <div class="right">
@@ -45,50 +45,38 @@
     </section>
 
     <section id="adminPanel" class="panel hidden">
-      <h2>Legg inn nytt spill</h2>
-      <form id="betForm" class="form-grid">
+      <h2>Ny kupong</h2>
+      <form id="ticketForm" class="form-grid">
         <div class="field">
           <label for="date">Dato</label>
           <input type="date" id="date" required>
-        </div>
-        <div class="field">
-          <label for="bookie">Side</label>
-          <input type="text" id="bookie" placeholder="Parions / Bet365" required>
-        </div>
-        <div class="field">
-          <label for="event">Event</label>
-          <input type="text" id="event" placeholder="Nottingham – Chelsea" required>
-        </div>
-        <div class="field">
-          <label for="pick">Valg</label>
-          <input type="text" id="pick" placeholder="Chelsea ML" required>
         </div>
         <div class="field">
           <label for="stake">Innsats</label>
           <input type="number" id="stake" min="0" step="0.01" placeholder="100" required>
         </div>
         <div class="field">
-          <label for="odds">Odds</label>
-          <input type="number" id="odds" min="1" step="0.01" placeholder="1.85" required>
+          <label for="type">Type</label>
+          <select id="type">
+            <option value="single">Single</option>
+            <option value="combo">Combo</option>
+          </select>
         </div>
-        <div class="right full">
-          <button type="reset" class="btn ghost">Nullstill</button>
-          <button type="submit" class="btn">Legg til</button>
+        <div class="field full">
+          <label for="note">Notat (valgfritt)</label>
+          <textarea id="note" rows="2" placeholder="Ekstra info"></textarea>
         </div>
       </form>
 
-      <h2 class="mt-2">Dine spill</h2>
-      <div class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Dato</th><th>Bookie</th><th>Event</th><th>Valg</th>
-              <th>Innsats</th><th>Odds</th><th>Status</th><th>Profit</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="adminRows"></tbody>
-        </table>
+      <h3>Legger til spill (legs)</h3>
+      <div id="legsBox"></div>
+      <div class="controls mt-1">
+        <button id="addLegBtn" class="btn">+ Legg til leg</button>
+        <button id="saveTicketBtn" class="btn">Lagre kupong</button>
       </div>
+
+      <h2 class="mt-2">Kuponger</h2>
+      <div id="adminTickets" class="ticket-list"></div>
     </section>
   </main>
 
@@ -99,55 +87,101 @@
   </footer>
 
   <script>
-    const fmt=new Intl.NumberFormat('no-NO',{minimumFractionDigits:2,maximumFractionDigits:2});
     const ADMIN_UIDS = window.APP_CONFIG.ADMIN_UIDS || [];
-    function profitFor(b){ return b.status==='win' ? Number(b.stake)*(Number(b.odds)-1) : (b.status==='loss' ? -Number(b.stake) : 0); }
-    function isAdminSession(session){ const uid = session?.user?.id; return !!uid && ADMIN_UIDS.includes(uid); }
+    const fmt=new Intl.NumberFormat('no-NO',{minimumFractionDigits:2,maximumFractionDigits:2});
+    function pill(s){ const c=s==='win'?'win':s==='loss'?'loss':'pending'; const t=s==='win'?'Vunnet':s==='loss'?'Tapt':'Åpen'; return `<span class="pill ${c}">${t}</span>`; }
+    function product(a){ return a.reduce((x,y)=> x*Number(y), 1); }
+    function settleStatus(legs){ if(legs.some(l=>l.status==='loss')) return 'loss'; if(legs.every(l=>l.status==='win')) return 'win'; return 'pending'; }
+    function totalOdds(legs){ return product(legs.map(l=> Number(l.odds))); }
+    function profitFor(t, legs){ const s=settleStatus(legs); if(s==='win') return Number(t.stake)*(totalOdds(legs)-1); if(s==='loss') return -Number(t.stake); return 0; }
+    function isAdminSession(session){ const uid=session?.user?.id; return !!uid && ADMIN_UIDS.includes(uid); }
+
+    function legRow(data={}){
+      const wrap = document.createElement('div');
+      wrap.className = 'form-grid';
+      wrap.innerHTML = `
+        <div class="field"><label>Bookie</label><input class="lg-bookie" type="text" placeholder="Bet365" value="${data.bookie||''}" required></div>
+        <div class="field"><label>Event</label><input class="lg-event" type="text" placeholder="PSG – OM" value="${data.event||''}" required></div>
+        <div class="field"><label>Valg</label><input class="lg-pick" type="text" placeholder="Over 2.5" value="${data.pick||''}" required></div>
+        <div class="field"><label>Odds</label><input class="lg-odds" type="number" min="1" step="0.01" value="${data.odds||''}" required></div>
+        <div class="field"><label>Status</label>
+          <select class="lg-status">
+            <option value="pending" ${(data.status||'pending')==='pending'?'selected':''}>Åpen</option>
+            <option value="win" ${(data.status||'pending')==='win'?'selected':''}>Vunnet</option>
+            <option value="loss" ${(data.status||'pending')==='loss'?'selected':''}>Tapt</option>
+          </select>
+        </div>
+        <div class="field"><label>&nbsp;</label><button class="btn ghost del" type="button">Slett</button></div>
+      `;
+      wrap.querySelector('.del').addEventListener('click', ()=> wrap.remove());
+      return wrap;
+    }
+
+    function readLegs(){
+      return [...document.querySelectorAll('#legsBox .form-grid')].map(row=> ({
+        bookie: row.querySelector('.lg-bookie').value.trim(),
+        event: row.querySelector('.lg-event').value.trim(),
+        pick: row.querySelector('.lg-pick').value.trim(),
+        odds: parseFloat(row.querySelector('.lg-odds').value),
+        status: row.querySelector('.lg-status').value
+      })).filter(l => l.bookie && l.event && l.pick && isFinite(l.odds));
+    }
+
+    async function loadAll(){
+      const { data: bets } = await sb.from('bets').select('*').order('date',{ascending:false}).order('created_at',{ascending:false});
+      const ids = (bets||[]).map(b=> b.id);
+      const { data: legs } = ids.length ? await sb.from('bet_legs').select('*').in('bet_id', ids) : { data: [] };
+      const byBet = {}; (legs||[]).forEach(l=> (byBet[l.bet_id]=byBet[l.bet_id]||[]).push(l));
+      return (bets||[]).map(b=> ({ ticket:b, legs: byBet[b.id]||[] }));
+    }
 
     async function renderAdmin(){
-      const { data, error } = await sb.from('bets').select('*').order('date',{ascending:false}).order('created_at',{ascending:false});
-      if(error){ alert('Kunne ikke laste: '+error.message); return; }
-      const tbody=document.getElementById('adminRows'); tbody.innerHTML='';
-      (data||[]).forEach(b=>{
-        const tr=document.createElement('tr');
-        tr.innerHTML=`
-          <td>${b.date||''}</td>
-          <td>${b.bookie||''}</td>
-          <td>${b.event||''}</td>
-          <td>${b.pick||''}</td>
-          <td>${fmt.format(Number(b.stake))}</td>
-          <td>${Number(b.odds).toFixed(2)}</td>
-          <td>
-            <select data-id="${b.id}">
-              <option value="pending" ${b.status==='pending'?'selected':''}>Åpen</option>
-              <option value="win" ${b.status==='win'?'selected':''}>Vunnet</option>
-              <option value="loss" ${b.status==='loss'?'selected':''}>Tapt</option>
-            </select>
-          </td>
-          <td>${b.status==='pending'?'—':((profitFor(b)>=0?'+':'')+fmt.format(profitFor(b)))}</td>
-          <td class="right">
-            <button class="btn ghost" data-del="${b.id}">Slett</button>
-          </td>`;
-        tbody.appendChild(tr);
-      });
-
-      tbody.querySelectorAll('select[data-id]').forEach(sel=>{
-        sel.addEventListener('change', async e=>{
-          const id=e.target.getAttribute('data-id');
-          const status=e.target.value;
-          const { error } = await sb.from('bets').update({ status }).eq('id', id);
-          if(error){ alert('Kunne ikke oppdatere: '+error.message); return; }
+      const items = await loadAll();
+      const list = document.getElementById('adminTickets'); list.innerHTML='';
+      items.forEach(({ticket, legs})=>{
+        const st = settleStatus(legs);
+        const el = document.createElement('div'); el.className='ticket';
+        el.innerHTML = `
+          <div class="ticket-head">
+            ${pill(st)}
+            <div class="kv"><span class="k">Dato</span><span class="v">${ticket.date}</span></div>
+            <div class="kv"><span class="k">Type</span><span class="v">${ticket.type==='combo'?'Combo':'Single'}</span></div>
+            <div class="kv"><span class="k">Total odds</span><span class="v">${totalOdds(legs).toFixed(2)}</span></div>
+            <div class="kv"><span class="k">Innsats</span><span class="v">${fmt.format(Number(ticket.stake))}</span></div>
+            <div class="kv"><span class="k">Profit</span><span class="v">${st==='pending'?'—':((profitFor(ticket, legs)>=0?'+':'')+fmt.format(profitFor(ticket, legs)))}</span></div>
+            <div class="right">
+              <button class="btn ghost" data-toggle>Detaljer</button>
+              <button class="btn ghost del" data-del="${ticket.id}">Slett</button>
+            </div>
+          </div>
+          <div class="ticket-body">
+            ${(ticket.note ? `<p class="muted">${ticket.note}</p>`: '')}
+            <table class="legs"><thead><tr><th>Bookie</th><th>Event</th><th>Valg</th><th>Odds</th><th>Status</th></tr></thead>
+              <tbody>${legs.map(l=>`<tr><td>${l.bookie}</td><td>${l.event}</td><td>${l.pick}</td><td>${Number(l.odds).toFixed(2)}</td><td>
+                <select data-leg="${l.id}">
+                  <option value="pending" ${l.status==='pending'?'selected':''}>Åpen</option>
+                  <option value="win" ${l.status==='win'?'selected':''}>Vunnet</option>
+                  <option value="loss" ${l.status==='loss'?'selected':''}>Tapt</option>
+                </select>
+              </td></tr>`).join('')}</tbody>
+            </table>
+          </div>`;
+        el.querySelector('[data-toggle]').addEventListener('click', ()=> el.classList.toggle('open'));
+        el.querySelectorAll('select[data-leg]').forEach(sel=>{
+          sel.addEventListener('change', async e=>{
+            const id=e.target.getAttribute('data-leg');
+            const status=e.target.value;
+            const { error } = await sb.from('bet_legs').update({ status }).eq('id', id);
+            if(error){ alert('Kunne ikke oppdatere leg: '+error.message); return; }
+            renderAdmin();
+          });
+        });
+        el.querySelector('[data-del]').addEventListener('click', async ()=>{
+          if(!confirm('Slette kupong?')) return;
+          await sb.from('bets').delete().eq('id', ticket.id);
           renderAdmin();
         });
-      });
-      tbody.querySelectorAll('button[data-del]').forEach(btn=>{
-        btn.addEventListener('click', async e=>{
-          const id=e.target.getAttribute('data-del');
-          if(!confirm('Slette dette spillet?')) return;
-          const { error } = await sb.from('bets').delete().eq('id', id);
-          if(error){ alert('Kunne ikke slette: '+error.message); return; }
-          renderAdmin();
-        });
+        list.appendChild(el);
       });
     }
 
@@ -158,29 +192,41 @@
         const err=document.getElementById('loginError'); err.textContent='';
         const { data, error } = await sb.auth.signInWithPassword({ email, password });
         if(error){ err.textContent=error.message; return; }
-        if(!isAdminSession(data.session)){ err.textContent='Ikke autorisert (feil bruker).'; await sb.auth.signOut(); return; }
+        const uid=data.session?.user?.id;
+        if(!ADMIN_UIDS.includes(uid)){ err.textContent='Ikke autorisert (feil bruker).'; await sb.auth.signOut(); return; }
         document.getElementById('loginBox').classList.add('hidden');
         document.getElementById('adminPanel').classList.remove('hidden');
+        document.getElementById('logoutBtn').classList.remove('hidden');
         renderAdmin();
-        document.getElementById('logoutBtn')?.classList.remove('hidden');
       });
 
-      document.getElementById('logoutBtn')?.addEventListener('click', async ()=>{ await sb.auth.signOut(); location.reload(); });
+      document.getElementById('logoutBtn').addEventListener('click', async ()=>{ await sb.auth.signOut(); location.reload(); });
 
-      document.getElementById('betForm').addEventListener('submit', async e=>{
-        e.preventDefault();
+      document.getElementById('addLegBtn').addEventListener('click', ()=>{
+        document.getElementById('legsBox').appendChild(legRow());
+      });
+
+      document.getElementById('saveTicketBtn').addEventListener('click', async ()=>{
         const date=document.getElementById('date').value || new Date().toISOString().slice(0,10);
-        const bookie=document.getElementById('bookie').value.trim();
-        const event=document.getElementById('event').value.trim();
-        const pick=document.getElementById('pick').value.trim();
         const stake=parseFloat(document.getElementById('stake').value);
-        const odds=parseFloat(document.getElementById('odds').value);
-        if(!bookie||!event||!pick||!isFinite(stake)||!isFinite(odds)) return;
-        const { error } = await sb.from('bets').insert([{ date, bookie, event, pick, stake, odds, status:'pending' }]);
-        if(error){ alert('Kunne ikke legge til: '+error.message); return; }
-        e.target.reset();
+        const type=document.getElementById('type').value;
+        const note=document.getElementById('note').value.trim() || null;
+        const legs=readLegs();
+        if(!isFinite(stake) || stake<=0 || legs.length===0){ alert('Fyll inn innsats og minst én leg.'); return; }
+
+        const { data: insBet, error: e1 } = await sb.from('bets').insert([{ date, stake, type, status:'pending', note }]).select();
+        if(e1){ alert('Kunne ikke lagre kupong: '+e1.message); return; }
+        const betId=insBet[0].id;
+        const payload = legs.map(l=> ({ ...l, bet_id: betId }));
+        const { error: e2 } = await sb.from('bet_legs').insert(payload);
+        if(e2){ alert('Kunne ikke lagre legs: '+e2.message); return; }
+        document.getElementById('ticketForm').reset();
+        document.getElementById('legsBox').innerHTML='';
         renderAdmin();
       });
+
+      // default én leg
+      document.getElementById('legsBox').appendChild(legRow());
     });
   </script>
 </body>
