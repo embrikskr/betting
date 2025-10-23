@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="no">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Road to 1 million</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bet Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="lib/supabase.js"></script>
@@ -15,8 +15,8 @@
       <div class="brand">
         <div class="logo"></div>
         <div>
-          <h1>Road to 1 million</h1>
-          <p class="muted">.</p>
+          <h1>Bet Tracker</h1>
+          <p class="muted">Single og combo-kuponger</p>
         </div>
       </div>
       <div style="margin-left:auto">
@@ -28,7 +28,7 @@
   <main class="wrap">
     <section class="cards">
       <div class="card">
-        <h2>Resultat </h2>
+        <h2>Resultat (avsluttede kuponger)</h2>
         <div id="mProfit" class="metric">+0,00</div>
         <p class="muted">Sum gevinst/tap</p>
       </div>
@@ -40,12 +40,35 @@
   </main>
 
   <script>
-    const fmt = new Intl.NumberFormat('no-NO',{minimumFractionDigits:2,maximumFractionDigits:2});
-    function pill(status){const cls=status==='win'?'win':status==='loss'?'loss':'pending'; const txt=status==='win'?'Vunnet':status==='loss'?'Tapt':'Åpen'; return `<span class="pill ${cls}">${txt}</span>`;}
-    function product(arr){ return arr.reduce((a,b)=> a*Number(b), 1); }
-    function settleStatus(legs){ if(legs.some(l=>l.status==='loss')) return 'loss'; if(legs.every(l=>l.status==='win')) return 'win'; return 'pending'; }
-    function totalOdds(legs){ return product(legs.map(l=> Number(l.odds))); }
-    function profitFor(ticket, legs){ const status=settleStatus(legs); if(status==='win') return Number(ticket.stake)*(totalOdds(legs)-1); if(status==='loss') return -Number(ticket.stake); return 0; }
+    // ===== HJELPERE: korrekt parsing og avrunding =====
+    function normNum(v) { return typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.')); }
+    function round2(x) { return Math.round((x + Number.EPSILON) * 100) / 100; }
+    const fmt = new Intl.NumberFormat('no-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // ===== LOGIKK: status, totalodds, profit =====
+    function settleStatus(legs) {
+      if (legs.some(l => l.status === 'loss')) return 'loss';
+      if (legs.length > 0 && legs.every(l => l.status === 'win')) return 'win';
+      return 'pending';
+    }
+    function totalOdds(legs) {
+      // Ikke rund her – eksakt produkt
+      return legs.reduce((acc, l) => acc * normNum(l.odds), 1);
+    }
+    function profitFor(ticket, legs) {
+      const s = settleStatus(legs);
+      const stake = normNum(ticket.stake);
+      const odds = totalOdds(legs);
+      if (s === 'win') return stake * (odds - 1);
+      if (s === 'loss') return -stake;
+      return 0;
+    }
+
+    function pill(status){
+      const cls = status==='win'?'win':status==='loss'?'loss':'pending';
+      const txt = status==='win'?'Vunnet':status==='loss'?'Tapt':'Åpen';
+      return `<span class="pill ${cls}">${txt}</span>`;
+    }
 
     async function loadTickets(){
       const { data: bets, error } = await sb.from('bets').select('*').order('date',{ascending:false}).order('created_at',{ascending:false});
@@ -64,6 +87,8 @@
         const st = settleStatus(legs);
         const odds = totalOdds(legs);
         const profit = profitFor(ticket, legs);
+        const payout = normNum(ticket.stake) * odds;
+
         const el = document.createElement('div'); el.className='ticket';
         el.innerHTML = `
           <div class="ticket-head">
@@ -71,8 +96,9 @@
             <div class="kv"><span class="k">Dato</span><span class="v">${ticket.date}</span></div>
             <div class="kv hide-sm"><span class="k">Type</span><span class="v">${ticket.type==='combo'?'Combo':'Single'}</span></div>
             <div class="kv"><span class="k">Total odds</span><span class="v">${odds.toFixed(2)}</span></div>
-            <div class="kv"><span class="k">Innsats</span><span class="v">${fmt.format(Number(ticket.stake))}</span></div>
-            <div class="kv"><span class="k">Profit</span><span class="v">${st==='pending'?'—':((profit>=0?'+':'')+fmt.format(profit))}</span></div>
+            <div class="kv"><span class="k">Innsats</span><span class="v">${fmt.format(round2(normNum(ticket.stake)))}</span></div>
+            <div class="kv"><span class="k">Utbetaling</span><span class="v">${st==='pending'?'—':fmt.format(round2(payout))}</span></div>
+            <div class="kv"><span class="k">Profit</span><span class="v">${st==='pending'?'—':((profit>=0?'+':'')+fmt.format(round2(profit)))}</span></div>
             <div class="right"><button class="btn ghost" data-toggle>Detaljer</button></div>
           </div>
           <div class="ticket-body">
@@ -84,17 +110,25 @@
                   <td>${l.bookie}</td>
                   <td>${l.event}</td>
                   <td>${l.pick}</td>
-                  <td>${Number(l.odds).toFixed(2)}</td>
+                  <td>${normNum(l.odds).toFixed(2)}</td>
                   <td>${pill(l.status)}</td>
                 </tr>`).join('')}
               </tbody>
             </table>
-          </div>`;
+          </div>
+        `;
         el.querySelector('[data-toggle]').addEventListener('click', ()=> el.classList.toggle('open'));
         list.appendChild(el);
       });
-      const total = items.filter(x=> settleStatus(x.legs)!=='pending').reduce((s,x)=> s + profitFor(x.ticket, x.legs), 0);
-      const mp=document.getElementById('mProfit'); mp.textContent=(total>=0?'+':'')+fmt.format(total); mp.classList.toggle('good', total>0); mp.classList.toggle('bad', total<0);
+
+      // total resultat for avsluttede kuponger
+      const total = items
+        .filter(x=> settleStatus(x.legs)!=='pending')
+        .reduce((s,x)=> s + profitFor(x.ticket, x.legs), 0);
+      const mp=document.getElementById('mProfit');
+      mp.textContent=(total>=0?'+':'')+fmt.format(round2(total));
+      mp.classList.toggle('good', total>0);
+      mp.classList.toggle('bad', total<0);
     }
 
     (async()=>{ const items=await loadTickets(); renderTickets(items); })();
